@@ -15,13 +15,12 @@ function AnamAvatar() {
   })();
 
   async function fetchSessionToken(personaOverrides = {}) {
-    // Always send role, prompt, and avatarId as query params for strict persona
+    // Always send role and prompt as query params; let backend use default avatarId from env
     const url = `${backendBase}/api/anam/token`;
     const params = new URLSearchParams({
       ...personaOverrides,
       role,
-      prompt,
-      avatarId: 'd9ebe82e-2f34-4ff6-9632-16cb73e7de08'
+      prompt
     }).toString();
     const finalUrl = params ? `${url}?${params}` : url;
     const resp = await fetch(finalUrl);

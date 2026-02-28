@@ -3,8 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
-// const Tesseract = require('tesseract.js');
-const fetch = require('node-fetch');
+const OpenAI = require('openai');
 require('dotenv').config();
 
 let mammoth;
@@ -161,10 +160,12 @@ router.post('/', upload.single('resume'), async (req, res) => {
       return res.json({ success: true, feedback: fallback, fallback: true, message: 'Could not extract usable text. Returned local heuristic result.' });
     }
 
-    // Use OpenAI to produce a strict JSON analysis following the schema.
+    // Use OpenAI SDK to produce a strict JSON analysis following the schema.
     const systemPrompt = `
-You are a professional resume analyst and career coach.
-Given a resume's full text, return ONLY a valid JSON strictly following this schema:
+You are an expert HR professional, technical recruiter, and career coach with 15+ years of experience evaluating resumes across all industries.
+
+Carefully read the full resume text provided and return ONLY a valid JSON object strictly following this schema — no markdown, no explanation outside the JSON:
+
 {
   "name": string | null,
   "email": string | null,
@@ -177,34 +178,37 @@ Given a resume's full text, return ONLY a valid JSON strictly following this sch
   "weaknesses": [ "string" ],
   "suggestions": [ "string" ],
   "score": number,
-  "overall_feedback": string
+  "overall_feedback": string,
+  "ats_keywords": [ "string" ],
+  "career_level": "entry" | "mid" | "senior" | "executive",
+  "recommended_roles": [ "string" ]
 }
+
+Guidelines:
+- "strengths": List 4-6 specific, evidence-based strengths from the resume (e.g., "5+ years of hands-on Python development across 3 companies").
+- "weaknesses": List 3-5 honest gaps or red flags (e.g., "No quantified achievements — metrics like % improvement or $ impact are absent").
+- "suggestions": List 4-6 actionable, specific improvements the candidate can make right now (e.g., "Add a summary section targeting your desired role", "Quantify at least 3 bullet points per job with metrics").
+- "score": Rate the resume from 0-100 based on completeness, impact, ATS-friendliness, clarity, and role-fit. Be realistic, not generous.
+- "overall_feedback": Write 3-4 sentences summarizing the candidate's profile, their readiness, and what would make this resume stand out.
+- "ats_keywords": Extract the most important technical and domain keywords for ATS optimization.
+- "career_level": Assess the seniority level based on total experience.
+- "recommended_roles": Suggest 3-5 job titles this candidate should be applying for.
 If data is missing, use null or [].
-Do not include any explanation outside JSON.
 `;
 
     try {
-      const openaiResp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Resume text:\n${text}` }
-          ],
-          temperature: 0.1,
-          max_tokens: 1500
-        })
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Please analyze this resume thoroughly and return the JSON assessment:\n\n${text}` }
+        ],
+        temperature: 0.2,
+        max_tokens: 2000
       });
 
-      if (!openaiResp.ok) throw new Error(`OpenAI error ${openaiResp.status}`);
-
-      const responseJson = await openaiResp.json();
-      const raw = responseJson.choices?.[0]?.message?.content?.trim();
+      const raw = completion.choices?.[0]?.message?.content?.trim();
       if (!raw) throw new Error('Empty OpenAI response');
 
       // Try to parse JSON strictly, with a tolerant fallback
@@ -241,7 +245,10 @@ Do not include any explanation outside JSON.
         weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
         suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
         score: typeof parsed.score === 'number' ? parsed.score : null,
-        overall_feedback: parsed.overall_feedback ?? null
+        overall_feedback: parsed.overall_feedback ?? null,
+        ats_keywords: Array.isArray(parsed.ats_keywords) ? parsed.ats_keywords : [],
+        career_level: parsed.career_level ?? null,
+        recommended_roles: Array.isArray(parsed.recommended_roles) ? parsed.recommended_roles : []
       };
 
       return res.json({ success: true, feedback: normalized, fallback: false });
