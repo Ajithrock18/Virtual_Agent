@@ -14,10 +14,22 @@ const anamRoute = require('./routes/anam');
 const anamProxyWs = require('./routes/anam-proxy-ws');
 
 const app = express();
-app.use(cors());
+
+// Enable CORS for all routes - allow all origins for development, restrict in production if needed
+app.use(cors({
+  origin: '*', // Allow all origins, or specify your Vercel URL
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 // Increase body size limits to allow base64-encoded resume uploads (PDFs can be several MBs when base64)
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'Backend is running ✓', timestamp: new Date().toISOString() });
+});
 
 // Mount only Anam endpoints
 app.use('/api/anam', anamRoute);
@@ -267,7 +279,7 @@ function startServer(port) {
     }
   });
 
-  server.listen(port, () => console.log(`Backend listening on http://localhost:${port}`));
+  server.listen(port, () => console.log(`Backend listening on http://0.0.0.0:${port}`));
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.warn(`Port ${port} in use, trying ${Number(port) + 1}`);
