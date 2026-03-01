@@ -3,16 +3,15 @@
     setRole(pendingRole);
   };
 import React, { useRef, useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 function AnamAvatar() {
-  // Minimal helper to reach backend for token (no proxying of engine/ws)
-  const backendBase = (() => {
-    if (typeof window === 'undefined') return '';
-    const host = window.location.hostname;
-    const port = window.location.port;
-    if (host === 'localhost' && (port === '5173' || port === '5174')) return 'http://localhost:8001';
-    return '';
-  })();
+  // Use API_BASE_URL from config, which handles both dev and production
+  const backendBase = API_BASE_URL || (
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost'))
+      ? 'http://localhost:8001'
+      : ''
+  );
 
   async function fetchSessionToken(personaOverrides = {}) {
     // Always send role and prompt as query params; let backend use default avatarId from env
