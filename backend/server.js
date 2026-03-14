@@ -18,9 +18,27 @@ const anamProxyWs = require('./routes/anam-proxy-ws');
 
 const app = express();
 
-// Enable CORS for all routes - allow all origins for development, restrict in production if needed
+// Enable CORS for all routes
+// In production, specify your Vercel frontend URL
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL || '', // e.g., https://your-project.vercel.app
+].filter(Boolean);
+
 app.use(cors({
-  origin: '*', // Allow all origins, or specify your Vercel URL
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else if (process.env.NODE_ENV !== 'production') {
+      // Allow all origins in development
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

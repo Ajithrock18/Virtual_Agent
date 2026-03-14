@@ -10,7 +10,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         // Use environment variable or default to localhost:8001
-        target: process.env.VITE_BACKEND_URL || 'http://localhost:8001',
+        // For production: VITE_BACKEND_URL should be set to your Render URL
+        target: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path,
@@ -20,5 +21,12 @@ export default defineConfig({
         }
       }
     }
+  },
+  build: {
+    target: 'esnext',
+    minify: 'terser',
+    sourcemap: false,
+    outDir: 'dist',
+    assetsDir: 'assets'
   }
 })
