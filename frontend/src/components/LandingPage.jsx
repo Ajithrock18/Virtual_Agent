@@ -2,6 +2,10 @@ import React, { useEffect } from 'react';
 import HeroSection from './HeroSection';
 import PainSection from './PainSection';
 import SolutionSection from './SolutionSection';
+import HowItWorks from './HowItWorks';
+import DemoPreview from './DemoPreview';
+import WhyLanaUnique from './WhyLanaUnique';
+import UnderTheHood from './UnderTheHood';
 import CTASection from './CTASection';
 
 export default function LandingPage() {
@@ -19,6 +23,10 @@ export default function LandingPage() {
         <HeroSection />
         <PainSection />
         <SolutionSection />
+        <HowItWorks />
+        <DemoPreview />
+        <WhyLanaUnique />
+        <UnderTheHood />
         <CTASection />
       </main>
     </div>

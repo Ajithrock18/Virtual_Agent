@@ -9,6 +9,9 @@ const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
 
+// Import database initialization
+const { initializeDatabase } = require('./models/database');
+
 // Only keep Anam-related routes for the simplified landing + demo app
 const anamRoute = require('./routes/anam');
 const anamProxyWs = require('./routes/anam-proxy-ws');
@@ -42,6 +45,24 @@ try {
   console.log('[INIT] Mounted /api/parse-resume route');
 } catch (e) {
   console.warn('[INIT] Could not mount resume-parse route:', e.message);
+}
+
+// Mount interview analytics route
+try {
+  const interviewRoute = require('./routes/interview');
+  app.use('/api/interview', interviewRoute);
+  console.log('[INIT] Mounted /api/interview route');
+} catch (e) {
+  console.warn('[INIT] Could not mount interview route:', e.message);
+}
+
+// Mount analytics & user management route (NEW)
+try {
+  const analyticsRoute = require('./routes/analytics');
+  app.use('/api/analytics', analyticsRoute);
+  console.log('[INIT] Mounted /api/analytics route');
+} catch (e) {
+  console.warn('[INIT] Could not mount analytics route:', e.message);
 }
 
 // Ensure uploads directory exists for multer
@@ -279,7 +300,14 @@ function startServer(port) {
     }
   });
 
-  server.listen(port, () => console.log(`Backend listening on http://0.0.0.0:${port}`));
+  server.listen(port, () => {
+    console.log(`Backend listening on http://0.0.0.0:${port}`);
+    
+    // Initialize database on startup
+    initializeDatabase()
+      .then(() => console.log('[INIT] Database initialized successfully'))
+      .catch(err => console.error('[INIT] Database initialization failed:', err));
+  });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.warn(`Port ${port} in use, trying ${Number(port) + 1}`);

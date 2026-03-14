@@ -1,17 +1,80 @@
-  const handleRoleSubmit = (e) => {
-    e.preventDefault();
-    setRole(pendingRole);
-  };
 import React, { useRef, useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
-function AnamAvatar() {
+function AnamAvatar({ onStatusChange, onInterviewEnd, role: interviewRole, sessionId }) {
   // Use API_BASE_URL from config, which handles both dev and production
   const backendBase = API_BASE_URL || (
     (typeof window !== 'undefined' && (window.location.hostname === 'localhost'))
       ? 'http://localhost:8001'
       : ''
   );
+
+  // Role configuration for avatar - must be defined before fetchSessionToken uses it
+  const role = 'interviewer';
+  const prompt = `You are Anam, an AI technical interviewer for software roles.
+
+OPENING:
+First, greet the candidate professionally and ask them to confirm their target role from these options:
+- SDE-1 Backend
+- SDE-1 Frontend  
+- SDE-1 Fullstack
+- SDE-1 Product
+- DevOps Engineer
+- Data Engineer
+- Custom (if they have another role in mind, ask them to briefly describe it)
+
+If they choose "Custom", ask them to describe the role in 2-3 sentences.
+
+INTERVIEW FLOW:
+1. Collect candidate information:
+   - Ask for their name
+   - Ask for years of experience
+   - Confirm the target role they chose
+   
+2. Conduct a structured technical interview:
+   - Ask 3-5 technical questions specific to their chosen role
+   - Ask 1-2 behavioral questions using STAR format (Situation, Task, Action, Result)
+   - Ask ONE question at a time
+   - Wait for their complete answer before proceeding
+   - After each answer, briefly acknowledge it and move to the next question
+
+3. Maintain professional interview tone:
+   - Be supportive and constructive
+   - If answers are unclear, ask one brief clarifying follow-up
+   - Keep all questions strictly relevant to their confirmed target role
+   - Never discuss topics unrelated to the interview
+   - Total duration should be 30-40 minutes
+
+EVALUATION AND JSON RESULT:
+When you have asked all questions OR the candidate indicates they are done, you MUST return ONLY a valid JSON object with NO extra text before or after:
+
+{
+  "candidate_name": "<string>",
+  "target_role": "<string>",
+  "duration_minutes": <number>,
+  "overall_rating": "<one of: Poor | Average | Good | Very Good | Excellent>",
+  "overall_score": <number from 0 to 100>,
+  "summary": "<2-4 sentence high-level summary of performance>",
+  "strengths": [
+    "<bullet point 1>",
+    "<bullet point 2>",
+    "<bullet point 3>"
+  ],
+  "areas_of_improvement": [
+    "<bullet point 1>",
+    "<bullet point 2>",
+    "<bullet point 3>"
+  ],
+  "recommendation": "<one of: Strong Hire | Hire | Borderline | No Hire>"
+}
+
+CRITICAL JSON RULES:
+- Output MUST be valid JSON
+- Do NOT include any markdown, explanation, or extra text
+- Do NOT include code fence markers (\`\`\`)
+- Use double quotes for all keys and string values
+- Ensure it can be parsed directly by JSON.parse()
+- Start the JSON immediately, no preamble`;
 
   async function fetchSessionToken(personaOverrides = {}) {
     // Always send role and prompt as query params; let backend use default avatarId from env
@@ -28,15 +91,18 @@ function AnamAvatar() {
     if (!data.sessionToken) throw new Error('No sessionToken in /api/anam/token response');
     return data.sessionToken;
   }
-  // ...existing code...
 
   const videoRef = useRef(null);
   const clientRef = useRef(null);
   const initRef = useRef(false);
   const [status, setStatus] = useState('idle'); // idle | connecting | connected | live | error | limited
-  // Strict interviewer persona and prompt
-  const role = 'interviewer';
-  const prompt = `You are Anam, a professional job interviewer. Greet the user, ask for their name and the position they are applying for, then immediately begin a realistic job interview. Only ask job interview questions relevant to the position, one at a time, and wait for a response before continuing. Never discuss anything unrelated to the interview. If the user tries to change the topic, politely redirect them back to the interview. Stay professional, supportive, and concise.`;
+
+  // Notify parent component when status changes
+  useEffect(() => {
+    if (onStatusChange) {
+      onStatusChange(status);
+    }
+  }, [status, onStatusChange]);
 
   const resetClient = () => {
     try {
@@ -47,6 +113,9 @@ function AnamAvatar() {
       initRef.current = false;
     } catch {}
   };
+
+  // Store for transcript monitoring cleanup
+  let transcriptCheckInterval = null;
 
   // Set desired role for the Anam persona. Stored in localStorage and used when
   // requesting an engine session from the backend. Exposed as window.__anamSetRole
@@ -65,14 +134,14 @@ function AnamAvatar() {
 
       const client = clientRef.current;
       // Ask backend for an engine created with this personaConfig
-  const resp = await apiFetch('/api/anam/engine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ personaConfig }) });
+  const resp = await fetch(`${backendBase || ''}/api/anam/engine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ personaConfig }) });
       const bodyWrap = await (async () => { try { return await resp.json(); } catch { return null; } })();
       const body = bodyWrap && (bodyWrap.body || bodyWrap) || null;
         // Debug: show key fields so we can confirm the browser received the token
         try {
           const dbg = {
             sessionToken: body?.sessionToken || body?.token || body?.data?.sessionToken || body?.data?.token || body?.body?.sessionToken,
-            signallingUrl: body?.signallingUrl || body?.signallingEndpoint || body?.signalling || body?.wsEndpoint || `${BACKEND_BASE || ''}/api/anam/ws-proxy`,
+            signallingUrl: body?.signallingUrl || body?.signallingEndpoint || body?.signalling || body?.wsEndpoint || `${backendBase || ''}/api/anam/ws-proxy`,
             heartbeatIntervalSeconds: body?.heartbeatIntervalSeconds || body?.clientConfig?.expectedHeartbeatIntervalSecs
           };
           console.debug('Anam engine response debug:', dbg, 'full:', bodyWrap);
@@ -167,7 +236,7 @@ function AnamAvatar() {
           try {
             // Use the primary engine endpoint only. The backend will perform the
             // required auth exchange and return a normalized engine session.
-            const proxyResp = await apiFetch('/api/anam/engine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+            const proxyResp = await fetch(`${backendBase || ''}/api/anam/engine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
             const proxyBody = await (async () => { try { return await proxyResp.json(); } catch { return null; } })();
               try {
                 const dbg = {
@@ -181,7 +250,7 @@ function AnamAvatar() {
             if (sid) {
                 // Ensure signallingUrl exists and points to backend proxy if needed
                 try {
-                  if (!proxyBody.signallingUrl) proxyBody.signallingUrl = `${BACKEND_BASE || ''}/api/anam/ws-proxy`;
+                  if (!proxyBody.signallingUrl) proxyBody.signallingUrl = `${backendBase || ''}/api/anam/ws-proxy`;
                 } catch (e) {}
               try { localStorage.setItem('anam_engine_session', JSON.stringify({ ...(proxyBody.body || proxyBody), session_id: sid })); } catch (e) {}
               window.__anam_engine_response = { ...(proxyBody.body || proxyBody), session_id: sid };
@@ -332,7 +401,58 @@ function AnamAvatar() {
         setStatus(attached ? 'live' : 'connected');
 
         if (attached) {
-          // If attached, start a small Virtual Interview Prep flow:
+          // Set up transcript monitoring to detect JSON interview result
+          const checkForInterviewResult = () => {
+            try {
+              // Try to access transcript from various SDK properties
+              const client = clientRef.current;
+              let transcript = '';
+              
+              if (client?.getTranscript && typeof client.getTranscript === 'function') {
+                transcript = client.getTranscript();
+              } else if (client?.transcript) {
+                transcript = client.transcript;
+              } else if (window.__anam_transcript) {
+                transcript = window.__anam_transcript;
+              } else if (client?.conversationHistory) {
+                transcript = Array.isArray(client.conversationHistory) 
+                  ? client.conversationHistory.map(msg => msg.text || msg).join('\n')
+                  : client.conversationHistory;
+              }
+              
+              // Check if we have new content to process
+              if (transcript && transcript.length > 0) {
+                // Look for JSON pattern in transcript
+                const jsonMatch = transcript.match(/\{[\s\S]*"candidate_name"[\s\S]*"recommendation"[\s\S]*\}/);
+                if (jsonMatch) {
+                  try {
+                    const result = JSON.parse(jsonMatch[0]);
+                    console.log('✅ Parsed interview result:', result);
+                    
+                    // Call parent callback with the parsed interview result
+                    if (onInterviewEnd) {
+                      onInterviewEnd(result);
+                    }
+                    
+                    // Stop monitoring after result is found
+                    if (transcriptCheckInterval) {
+                      clearInterval(transcriptCheckInterval);
+                      transcriptCheckInterval = null;
+                    }
+                  } catch (parseErr) {
+                    console.warn('⚠️ Found JSON pattern but parsing failed:', parseErr);
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('⚠️ Transcript check error:', err);
+            }
+          };
+          
+          // Start polling for interview result every 2 seconds
+          transcriptCheckInterval = setInterval(checkForInterviewResult, 2000);
+          
+          // If attached, start the interview flow:
           // - ask name
           // - ask role
           // - ask 3 role-based questions (voice + prompt)
@@ -465,7 +585,13 @@ function AnamAvatar() {
         console.error('❌ Error initializing Anam avatar:', error);
       }
     })();
-    return () => resetClient();
+    return () => {
+      resetClient();
+      if (transcriptCheckInterval) {
+        clearInterval(transcriptCheckInterval);
+        transcriptCheckInterval = null;
+      }
+    };
   }, []);
 
   return (
